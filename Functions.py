@@ -1,103 +1,143 @@
-"""
-
-"""
-
 # Imports #####################################################################
 
 # modules
-import random
+#import random
 import numpy as np
 import math
+import random
+import matplotlib.pyplot as plt
+
+#np.random.seed(1912)
 
 ###############################################################################
 
-# use np.random.rand
-# def gauss(mean, stdev):
-#     '''
-#     This function creates a gaussian distribution from an input mean and 
-#     standard deviation and generates a random value from within the 
-#     distribution
+def initialise_swimming_direction():
+    '''
+    Initialises an initial unit vector direction of bacteria swimming
+    by generating two random angles on the unit sphere and converting
+    to cartesian coordinates.
+    '''
     
-#     mean: float, mean of gaussian distribution
+    # generating random angles from the circular coordinate system
+    # cos theta is generated as this is uniform unlike theta
+    costheta = np.random.uniform(0, 1)
+    phi = np.random.uniform(0, 2*np.pi)
     
-#     stdev: float, standard deviation of gaussian distribution
-#     '''
-#     return random.gauss(mean, stdev)
+    # components of 3D unit vector on unit circle
+    # converting from circular to cartesian coordinates
+    x = np.sin(phi)*costheta
+    y = np.sin(phi)*np.sqrt(1-costheta**2)
+    z = np.cos(phi)
+    
+    # random unit vector generated from the circular coordinate system
+    return np.array([x, y, z])
 
-def noise():
-    '''
-    Generates a random 3D noise vector with values picked from a gaussian 
-    distribution of mean 0 and standard deviation 1.
-    
-    :return: [3] numpy array, random 3D vector
-    '''
-    
-    return np.random.rand(3)
+# #print(initialise_swimming_direction())
 
+# r = initialise_swimming_direction()
+# print(np.sqrt(r[0]**2 + r[1]**2 + r[2]**2)) # checking magnitude of random vector = is 1
 
-def multi_noise(N):
+def tangential_velocity(current_position, planar_position, current_velocity):
     '''
-    Generates multiple 3D noise vectors with xyz components picked from a
-    gaussian distribution of mean 0 and standard deviation 1. Conditions of 
-    these vectors is that their vector mean must equal 0 (vector) and each one
-    must be different.
+    Inakes the current velocity of a bacterium and returns the tangential component
+    of that velocity.
     
-    :param N: integer, number of vectors to be generated
-    
-    :return noise_
+    :param current_position: numpy array [3], xyz components of bacteriums current position
+    :param planar_position
     '''
     
-    # generating random 3D vectors and checking for uniqueness
-    noise = [] # N 3D vectors
+    # radial unit vector
+    radial_unit_vec = planar_position / np.linalg.norm(planar_position)
     
-    while len(noise) < N:
-        # create random vector
-        rand_vec = np.random.randn(3) # check for second dimension
+    # radial component of velocity
+    radial_magnitude = np.dot(radial_unit_vec, current_velocity)
+    
+    # 
+    tangential_vel = current_velocity - (radial_magnitude*radial_unit_vec)
+    
+    return tangential_vel
+
+def convert(lst):
+    '''
+    This function takes a list and converts it into a space separated 
+    string.
+    
+    :param lst: list of any length
+    '''
+    return ' '.join(lst)
+
+def change_swimming_speed(initial_conditions_file_path, swimming_speeds):
+    '''
+    This function opens and changes the swimming speed within an inital
+    condition file. The swimming velocity is a supplied parameter, if there
+    is multiple lines the initial conditions file then the number of elements
+    in the swimming_velocities list or array must match the length of lines in 
+    the initial conditions file.
+    
+    :param initial_conditions_file_path: string, file path to initial conditions file
+    :param swimming_speeds: array or list (length equal to number of lines in
+    initial conditions file) containing the swimming velocities that are to be
+    appended.
+    
+    '''
+    
+    # opening initial conditions file
+    with open(initial_conditions_file_path, 'r') as file:
+        # read each line in configuration file
+        data = file.readlines()       
+    
+    # list of data where each element is a line in the initial conditions file
+    lists = []    
+    
+    # splitting each line and reassigning the desired swimming speed value
+    for i in range(len(data)):
+        params = data[i].split()
+        params[-1] = str(swimming_speeds[i]) + '\n'
         
-        # checking for uniquness in vector to already generated ones
-        unique_check = all(np.all(rand_vec != i) for i in noise)
+        # converting split list back into string format
+        combined = convert(params)
+        # putting params back into correct format for putting back into file
+        lists.append(combined)
         
-        # if vector is unique stored to list
-        if unique_check:
-            noise.append(rand_vec) # comment out
-    
-    # moving unique vectors to array as easier to work with        
-    noise_arr = np.array(noise)   
-    #print(noise_arr)
-    
-    # ensuring the average vector is the 0 vector
-    
-    # mean vector of all noise vectors combined
-    mean = np.mean(noise_arr, axis=0)
-    
-    # subtracting mean vector to ensure average vector is 0
-    noise_new = noise_arr - mean # could end up back at the origin
-    #print(noise_new)
-    #print(np.mean(noise_new, axis=0)) # sufficiently small, each component 10-17
-    
-    return noise_new
-
-def multinoise(N):
-    
-    noise = np.random.rand(N,3)
-    
-    return noise
-
-#print(multinoise(20))
-
-# not 100% sure this is needed
-def diffusion(diffusion_coefficient, dt, noise_vector):
+    # and write everything back to config file
+    with open(initial_conditions_file_path, 'w') as file:
+        file.writelines(lists)
+        
+def change_starting_coords(initial_conditions_file_path, starting_positions):
     '''
-    This function calculates the diffusion velocity component
+    This function opens and changes the swimming speed within an inital
+    condition file. The swimming velocity is a supplied parameter, if there
+    is multiple lines the initial conditions file then the number of elements
+    in the swimming_velocities list or array must match the length of lines in 
+    the initial conditions file.
     
-    :param diffusion_coefficient: float, diffusion coefficient
-    :param dt: float, timestep of simulation in seconds
-    :param noise_vector: [3] numpy array, xyz components of random noise
-    
-    :return: [3] numpy array, xyz components of velocity from diffusion
+    :param initial_conditions_file_path: string, file path to initial conditions file
+    :param starting_positions: n x 3 array where n is the number of lines in the 
+    initial conditions file, positions in xyz format.
     '''
+    
+    # opening initial conditions file
+    with open(initial_conditions_file_path, 'r') as file:
+        # read each line in configuration file
+        data = file.readlines()       
+    
+    # list of data where each element is a line in the initial conditions file
+    lists = []    
+    
+    # splitting each line and reassigning the desired swimming speed value
+    for i in range(len(data)):
+        params = data[i].split()
+        params[2] = str(starting_positions[0]) # x coord
+        params[3] = str(starting_positions[1]) # y coord
+        params[4] = str(starting_positions[2]) # z coord
+        params[5] = str(params[5]) + '\n' # making sure new line is added
+        print(params)
         
-    return np.sqrt(2*diffusion_coefficient/dt)*noise_vector
-
+        # converting split list back into string format
+        combined = convert(params)
+        # putting params back into correct format for putting back into file
+        lists.append(combined)
         
-
+    # and write everything back to config file
+    with open(initial_conditions_file_path, 'w') as file:
+        file.writelines(lists)  
