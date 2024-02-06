@@ -32,6 +32,6 @@ Ensure that the following files are downloaded in the same directory:
 5. Object_initial_conditions (folder) with all inner files
 6. plot_bacpos.py
 
-Once this is completed either run BacStroke.py from the terminal or from a Python editor to generate a positional data file (default name is bacpos.csv). To visualise this also run plot_bacpos.py. Note that the visualization may need editing as I typically use a specific stylesheet.
+Once this is completed either run BacStroke.py from the terminal (ensure you navigate the directory containing the code first) or from a Python editor to generate a positional data file (default name is bacpos.csv). To visualise this also run plot_bacpos.py. Note that the visualization may need editing as I typically use a specific stylesheet.
 
 
