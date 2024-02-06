@@ -1,5 +1,6 @@
 '''
-This class creates a bacteria instance within a 3D system
+This script contains the Bacterium3D class. This class is used to decribe a 
+bacterium that is present within a clinostat. 
 '''
 
 # Imports #####################################################################
@@ -17,7 +18,8 @@ import Functions as f
 
 class Bacteria3D(object):
     '''
-    Class used to describe bacteria modelled as point particles in space
+    Class used to describe bacteria modelled as point particles in fluid moving
+    as a solid body within a clinostat.
     '''
     
     def __init__(self, mass, position, radius, swimming_vel):
@@ -50,49 +52,66 @@ class Bacteria3D(object):
         return xyz_string
     
     
-# storing old terminal velocity just in case needed
-    def terminal_vel(self, viscosity_coeff, density, g):
+# # storing old terminal velocity just in case needed
+#     def terminal_vel(self, viscosity_coeff, density, g):
+#         '''
+#         Calculates velocity at t = 0 for each bacteria instance.
+        
+#         :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
+#         :param density: float, density in kg/m^3 for the same liquid
+#         :param g: float, gavitational constant in kg/m^2 for desired environment
+#         :param a: float, bacterial size in m
+#         '''   
+#         # assuming to be at terminal velocity once in system (can add factor from 23/9/23 notes in not assuming this)
+#         # currently only using Vt and Vd but Vs and Vr will be implemented
+        
+#         # as only VT acting then [x] and [z] vel will be 0
+        
+#         VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
+        
+#         self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
+        
+    
+    def terminal_vel(self, viscosity_coeff, fluid_density, g):
         '''
         Calculates velocity at t = 0 for each bacteria instance.
         
         :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
-        :param density: float, density in kg/m^3 for the same liquid
+        :param fluid_density: float, density in kg/m^3 for the same liquid
+        :param object_density: float, density of object in clinostat, kg/m^3
         :param g: float, gavitational constant in kg/m^2 for desired environment
-        :param a: float, bacterial size in m
         '''   
-        # assuming to be at terminal velocity once in system (can add factor from 23/9/23 notes in not assuming this)
-        # currently only using Vt and Vd but Vs and Vr will be implemented
         
-        # as only VT acting then [x] and [z] vel will be 0
+        # density of object when assumed to be a sphere        
+        object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
         
-        VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
+        # bouyant mass of object
+        bm = self.mass*(1-(fluid_density/object_density))
+
+        # gravity acts in y direction therefore terminal velocity in y direction        
+        VTy = (bm*g)/(6*np.pi*viscosity_coeff*self.rad) 
         
         self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
         
-    
-    # def terminal_vel(self, viscosity_coeff, fluid_density, g):
-    #     '''
-    #     Calculates velocity at t = 0 for each bacteria instance.
         
-    #     :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
-    #     :param fluid_density: float, density in kg/m^3 for the same liquid
-    #     :param object_density: float, density of object in clinostat, kg/m^3
-    #     :param g: float, gavitational constant in kg/m^2 for desired environment
-    #     '''   
-    #     # assuming to be at terminal velocity once in system (can add factor from 23/9/23 notes in not assuming this)
-    #     # currently only using Vt and Vd but Vs and Vr will be implemented
+    def centripetal_force(self, viscosity_coeff, fluid_density, omega, planar_position):
+        '''
+        Calculates velocity due to centripetal force to offset the drag force.
         
-    #     # as only VT acting then [x] and [z] vel will be 0
+        :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
+        :param fluid_density: float, density in kg/m^3 for the same liquid
+        :param omega: float, density of object in clinostat, kg/m^3
+        :param planar_position: numpy array [3], xyz position of bacterium with z set to 0.
+        '''   
         
-    #     object_density = self.mass/(np.pi*(4/3)*self.rad**3)
+        # density of object when assumed to be a sphere        
+        object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
         
-    #     bm = self.mass*(1-(fluid_density/object_density))
-        
-    #     VTy = (bm*g)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
-        
-    #     #0.05*g*density*self.rad**2
-        
-    #     self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
+        # bouyant mass of object
+        bm = self.mass*(1-(fluid_density/object_density))
+
+        # centripetal force being offset by drag force
+        self.centripetal_vel = (bm*(omega**2)*planar_position)/(6*np.pi*viscosity_coeff*self.rad)
         
         
     def rotational_vel(self, omega):
@@ -105,17 +124,19 @@ class Bacteria3D(object):
         x = self.pos[0] # current x position of bacteria
         y = self.pos[1] # current y position of bacteria
         
-        self.rot_vel = np.array([-y*omega, x*omega, 0]) # updating the current rotational velocity of the bacteria, calculated from 
+        self.rot_vel = np.array([-y*omega, x*omega, 0]) # updating the current rotational velocity of the bacteria 
     
     
     @staticmethod
-    def tumble_probability(dt):
+    def tumble_probability(dt, tumbling_rate):
         '''
         Calculates if a bacterium is going to tumble in the current timestep.
+        This allows implementation of run and tumble motion into bacteriums motion.
         
         Assuming that the rate of tumbling is once per second
         
         :param dt: float, timestep of simulation in s
+        :param tumbling_rate: integer, number of tumbles per second in bacteriums motion
         '''
         # counting number of decimal places in timestep float
         dps = str(dt)[::-1].find('.')
@@ -123,16 +144,26 @@ class Bacteria3D(object):
         # generating random number between 0 & 1 with same timestep as dt        
         random_number = round(np.random.uniform(0, 1), dps)
         
-        tumbling_rate = 1 # tumble per second
+        #tumbling_rate = 1 # tumble per second
         
-        tumble_prob = tumbling_rate*dt # unitless
+        # threshold that allows bacterium to tumble
+        tumble_prob = 1 - (tumbling_rate*dt) # unitless
+        #print(tumble_prob)
+        # if randomly generated number greater than or equal to theshold
+        # bacterium tumbles
+        if random_number >= tumble_prob:
+            #print('Tumbled')
+            does_bacterium_tumble = 1
         
-        does_bacterium_tumble = (random_number<=tumble_prob) # returns true or false
+            
+        else: # bacterium doesnt tumble
+            #print('No Tumbles')
+            does_bacterium_tumble = 0  
         
-        return does_bacterium_tumble # true = does tumble, false = does not tumble
+        return does_bacterium_tumble # 1 = does tumble, 0 = does not tumble
         
     
-    def update_swimming_vel(self, omega, rotational_diffusion_coefficient, dt):
+    def update_swimming_vel(self, omega, rotational_diffusion_coefficient, dt, does_bacterium_tumble):
         '''
         This function updates the swimming velocity of the bacterium.
         
@@ -141,7 +172,7 @@ class Bacteria3D(object):
         :param dt: float, timestep of simulation in s
         '''
         # If tumble_probabilty is true then the bacterium tumbles in a random direction
-        if self.tumble_probability(dt) == True:
+        if does_bacterium_tumble == 1:
             #print('tumbling.....................................')
             
             # random new tumbling direction
@@ -168,14 +199,10 @@ class Bacteria3D(object):
             # diffusion term in rate of change of swimming direction
             coeff = np.sqrt((2*rotational_diffusion_coefficient)/dt) # coefficient on second term of rate of change vector
             noise = np.random.normal(0, 1, size=3) # different from noise vector in diffusion velocity (avoids coupling)
-            #noise = np.array([1, 2, 3])
             delta = np.identity(3) # rank 2 tensor
             outer_product = np.outer(self.swim_direction, self.swim_direction) # outer product of swimming unit vectors
         
             diffusion_term = coeff*((delta - outer_product)@noise)
-            # print(noise)
-            # print(delta - outer_product)
-            # print((delta - outer_product)@noise)
         
             # rate of change of the swimming unit vector
             dedt = rotation + diffusion_term
@@ -187,7 +214,7 @@ class Bacteria3D(object):
         
             # updating the swimming direction and then the swimming velocity with that vecot
             self.swim_direction = new_direction/magnitude # normalising for unit vector  
-            #self.swim_vel = self.swim*self.swim_direction
+        
 
 
     def update_vel(self, dt, diffusion_coefficient):
@@ -209,8 +236,7 @@ class Bacteria3D(object):
         # diffusion
         diffusion = noise*np.sqrt(2*diffusion_coefficient/dt)
         
-        self.vel = self.term_vel + diffusion + self.rot_vel + self.swim*self.swim_direction
-        # made swimming change
+        self.vel = self.term_vel + diffusion + self.rot_vel + self.swim*self.swim_direction + self.centripetal_vel
  
         
     def update_pos(self, dt):
@@ -230,7 +256,7 @@ class Bacteria3D(object):
         
         The input file should contain one line per particle in the following
         format:
-        <mass>  <x> <y> <z>    <vx> <vy> <vz>
+        <mass>  <radius>  <x> <y> <z>  <vs> 
         
         :param file_handle: Readable file handle in the above format
         :return: Particle3D instance
