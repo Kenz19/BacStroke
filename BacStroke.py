@@ -72,7 +72,7 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
     for i in range(lines):
         bacteria.append(bac.new_b3d(infile))
         
-    # 2. DEFINING INITIAL CONDITIONS AND CONSTANTS OF CLINOSTAT SYSTEM ###########
+    ### 2. DEFINING INITIAL CONDITIONS AND CONSTANTS OF CLINOSTAT SYSTEM ###
         
     # Time parmeters of simulation
     time = 0.0 # [s]
@@ -80,12 +80,11 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
     total_time = float(config[2]) # total length of similation [s]
     numstep = round(total_time/dt) # number of steps that simulation will take, rounded to int as used as np sizing
     
-    # clinostat parameters 
+    # rotation parameters 
     clino_rotation_rate = float(config[3]) # rotation rate of clinostat [RPM]
     omega = clino_rotation_rate*2*np.pi/60 # converting rotation rate to angular velocity [rad/s]
     
-    # clinostat parameters
-    
+    # physical clinostat parameters
     R = float(config[4]) # radius of circular face of clinostat [m]
     r = float(config[5]) # inner radius of clinostat on circular face [m]
     H = float(config[6]) # length of clinostat down the z axis [m]
@@ -94,56 +93,53 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
     # system constants
     density = float(config[7]) # density of medium in clinostat [kg/m^3]
     g = float(config[8]) # acceleration due to gravity [m/s^2]
-    
     rotational_diffusion_coefficient = float(config[9]) # inversely proportional to time it takes bacterium to forget direction its travelling in [1/s]
     viscosity_coefficient = float(config[10]) # viscosity coefficient of clinostat medium at room temp [Pa/s] (water during testing)
     diffusion_coefficient = float(config[11]) # diffusion coefficient for medium within clinostat at room temp [m^2/s]
-
     tumbling_rate = int(config[12]) # how often in a second a bacterium should tumble
-
-    print(config)
     
     # We now have a list of bacteria created as point particle instances from
     # the bacteria3D class 
     
-    # 2. GENERATING INITIAL CONDITIONS ########################################
-    
+    ### 3. GENERATING INITIAL CONDITIONS ###
+
+    # array to store inital positions of each bacteria
     initial_positions = np.zeros([lines, 3])
     
     # reading inital position of bacteria
     for i in range(len(bacteria)):        
-            # Saving initial positions
+            # Saving initial positions to previously defined array
             initial_positions[i] = bacteria[i].pos
 
     # Storage for data
     pos_array = np.zeros([lines, numstep, 3]) # xyz position of every bacteria every timestep
-    time_array = np.zeros(numstep)
-    tumble_array = np.zeros(numstep)
-    swim_direction = np.zeros([lines, numstep, 3])
+    time_array = np.zeros(numstep) # tracking simulation time [s]
+    tumble_array = np.zeros(numstep) # mark when a bacterium tumbles with a 1, 0 if not
+    swim_direction = np.zeros([lines, numstep, 3]) # tracking magnitude of swimming vector (done for external test)
     
-    # initialising velocity terms
+    # initialising velocity terms (generate the velocity in the first step via Bacteria3D)
     for i in range(lines):
-        bacteria[i].terminal_vel(viscosity_coefficient, density, g) # terminal velocity
-        bacteria[i].rotational_vel(omega) # rotational velocity
+        bacteria[i].terminal_vel(viscosity_coefficient, density, g) # terminal velocity due to gravity
+        bacteria[i].rotational_vel(omega) # rotational velocity of the clinostat
         
-        # initial planar position
+        # initial planar position on circular face (needed for centripetal force)
         x = initial_positions[i][0]
         y = initial_positions[i][1]
         planar_pos = np.array([x, y, 0])
         
         bacteria[i].centripetal_force(viscosity_coefficient, density, omega, planar_pos) # centripetal velocity
     
-    # 3. BEGINNING OF TIME INTEGRATION  #######################################
+    ### 4. BEGINNING OF TIME INTEGRATION (VELOCITY VERLET) ###
     
-    for i in range(numstep):  # Anything that happens per each timestep 
+    for i in range(numstep):  # Anything that happens per timestep 
         
         # progress tracking for loop
-        #print('Progress: ' + str(i+1) + ' out of ' + str(numstep))
+        #print('Progress: ' + str(i+1) + ' out of ' + str(numstep)) # uncomment out for progress bar
         
         time += dt # establishing current time in simulation
         time_array[i] = time # storing current time in simulation
         
-        for j in range(1): # Anything for each particle
+        for j in range(1): # Anything for each bacterium
   
             # radius of bacterium
             a = bacteria[j].rad
@@ -151,7 +147,9 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
             # updating velocity of each bacterium [m/s]
             bacteria[j].update_vel(dt, diffusion_coefficient)
             
-            # boundary conditions (x & y)
+            ### 5. BOUNDRY CONDITIONS ###
+
+            # apply xy boundry conditions if applicable
             
             #position on a 2D circle (set z = 0)
             planar_position = bacteria[j].pos - [0, 0, bacteria[j].pos[2]]
@@ -181,8 +179,8 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
                 rad_dir[2] = 0
                 rad_dir /= np.linalg.norm(rad_dir)
                 
-                # moving bacterium to outside of boundry condition zone
-                frac = 0.1   #Fraction of body size to set inside outer_bc_zone (make parameter later)
+                # moving bacterium to outside of boundry condition zone (but remain inside clinostat)
+                frac = 0.1  #Fraction of body size to set inside outer_bc_zone (make parameter later)
                 pos_z = bacteria[j].pos[2] # storing z coord of bacterium
                 bacteria[j].pos = (R - (1.0 + frac)*a)*rad_dir # setting position to some fraction outside the boundry zone but inside the clinostat, this only sets xy parameters
                 bacteria[j].pos[2] = pos_z # setting z parameter back to original
@@ -283,6 +281,8 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
                 pos_array[j, i] = bacteria[j].pos
                 
                 bacteria[j].vel[2] = 0
+
+            ### end of boundry conditions
                 
             # dont apply wall boundry conditions
             else:
@@ -303,57 +303,17 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
                 
                 bacteria[j].update_swimming_vel(omega, rotational_diffusion_coefficient, dt, tumble) # updating swimming velocity
                 swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
-                
-           # if statement for inner boundry conditions, including the same thing about the z conditions 
-    
-    #pos_array[0] = pos_array[0][::100]
+
+    ### 6. SAVING OUTPUT ###            
+
     # saving parameters to output file
     np.savetxt(output_file, pos_array[0], delimiter=",")
     np.savetxt(tumble_file, tumble_array, delimiter=",")
     np.savetxt(time_file, time_array, delimiter=",") # outputting time for ease of analysis
     #np.savetxt(swimming_file, swim_direction[0], delimiter = ",")
-    # 4. PLOTTING ################################################################
-            
-    # # plotting path of bacteria
-    # nopoints = 50
-    
-    # x_coords = pos_array[0,:,0]
-    # y_coords = pos_array[0,:,1]
-    # z_coords = pos_array[0,:,2]
-    
-    # fig,ax = plt.subplots(1,3, figsize = (35,12))
-    # ax[0].scatter(x_coords[::nopoints], z_coords[::nopoints], s=5, label = 'Bacteria 1')
-    # ax[0].set_xlabel('x', fontsize = 30)
-    # ax[0].set_ylabel('z', fontsize = 30)
-    # ax[0].tick_params(axis='x', labelsize=20)
-    # ax[0].tick_params(axis='y', labelsize=20)
-    # #ax[0].legend()
-    
-    # # view of circular face of clinostat
-    # cir = plt.Circle((0, 0), R, facecolor='#c7c7c7', alpha=1, linewidth=3, linestyle='--', edgecolor='black')#color='darkorange',fill=False)
-    # ax[1].add_patch(cir)
-    # cir2 = plt.Circle((0, 0), r, facecolor='white', alpha=1, linewidth=3, linestyle='--', edgecolor='black')#color='darkorange',fill=False)
-    # ax[1].add_patch(cir2)
-    # ax[1].scatter(x_coords[::nopoints], y_coords[::nopoints], s=5, zorder = 1, label = 'Bacteria 1')
-    # ax[1].set_xlabel('x', fontsize = 30)
-    # ax[1].set_ylabel('y', fontsize = 30)
-    # ax[1].tick_params(axis='x', labelsize=20)
-    # ax[1].tick_params(axis='y', labelsize=20)
 
-    # # plotting y position against time
-    # # ax[2].scatter(time_array[::10]/1e2, x_coords[::10], s = 5, label = 'Bacteria 1')
-    # ax[2].plot(time_array[::nopoints]/1e2, y_coords[::nopoints], '-o', label = 'Bacteria 1')
-    # ax[2].set_xlabel('t ($10^2$s)', fontsize = 30)
-    # ax[2].set_ylabel('y', fontsize = 30)
-    # ax[2].tick_params(axis='x', labelsize=20)
-    # ax[2].tick_params(axis='y', labelsize=20)
-    
-    # fig.suptitle('Sim length = ' + str(total_time) + 's' + ', $\Delta$t = ' + str(dt) + 's' + ', RPM = ' + str(clino_rotation_rate), fontsize=30)
-    # plt.savefig(figure_output_file, dpi = 300)
-    # plt.show()
-    
-    # PUT DPI 
-    
+  
+ 
 # Execute main method, but only when directly invoked
 if __name__ == "__main__":
     main('config.txt', 'bacpos.csv', 'tumbles.csv', 'time.csv', 'swimming_direction.csv', 'trajectory.png')
