@@ -11,18 +11,27 @@ Bacteria3D.py - This script contains the bacteria3D class which describes the ve
 
 initialconditions.txt - Text file containing the initial properties of each bacteria at the start of the simulation. Its format is as follows (all values are floats):
 
-bacterial mass [kg], bacterial radius [m], x position, y position, z position.
+bacterial mass [kg], bacterial radius [m], x position, y position, z position, swimming velocity [m/s]
 
 in the current example, this looks like this:
 
-1E-12 1E-6 0.0 0.0 0.0
+1E-12 1E-6 0.0 0.0 0.0 20E-6
 
-Currently, the origin is defined as (0, 0, 0)
+The origin is defined as (0, 0, 0)
 
-test_config.txt - This file contains the parameters of the simulation. Its format is as follows:
+test_config.txt - This file contains the parameters of the simulation. It contains explanations of each parameter in the comments of each line. 
 
-initialconditions.txt # file containing initial parameters of bacteria
-timestep of simulation [s]
-Simulation length [s]
+How to use:
+
+Ensure that the following files are downloaded in the same directory:
+
+1. BacStroke.py (file)
+2. Bacteria3D.py (file)
+3. Functions.py (file)
+4. Config.txt (file)
+5. Object_initial_conditions (folder) with all inner files
+6. plot_bacpos.py
+
+Once this is completed either run BacStroke.py from the terminal or from a Python editor to generate a positional data file (default name is bacpos.csv). To visualise this also run plot_bacpos.py. Note that the visualization may need editing as I typically use a specific stylesheet.
 
 
