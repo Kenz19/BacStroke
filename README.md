@@ -7,12 +7,12 @@ BacStoke.py - The main script. The current version of this script takes some ini
 
 Positions of bacteria are currently updated under the assumption that their movement is influenced by 6 different components:
 
-Gravity
-Thermal Diffusion
-Clinorotation 
-Centripetal force
-Swimming
-Tumbles
+Gravity,
+Thermal Diffusion,
+Clinorotation, 
+Centripetal force,
+Swimming,
+Tumbles,
 
 Bacteria3D.py - This script contains the bacteria3D class which describes the velocity, positional, and physical properties of each bacteria. It has self-functions used to update the position and velocities of the bacteria at each timestep within BacStroke.py. 
 
