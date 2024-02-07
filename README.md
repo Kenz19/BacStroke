@@ -5,7 +5,14 @@ Files:
 
 BacStoke.py - The main script. The current version of this script takes some initial conditions (from initialconditions.txt) and tracks and plots the trajectories of these bacteria over a specified simulation time from within the configuration file (test_config.txt). 
 
-Positions of bacteria are currently updated under the assumption that their movement is only influenced by gravity and diffusion, but effects from rotation by the clinostat and bacterial swimming (run and tumble motion) will be added in due course. There is currently no ability to place limits on the size of the clinostat so bacteria may travel infinitely far if the simulation is run for long enough but again this will be added in due course.
+Positions of bacteria are currently updated under the assumption that their movement is influenced by 6 different components:
+
+Gravity
+Thermal Diffusion
+Clinorotation 
+Centripetal force
+Swimming
+Tumbles
 
 Bacteria3D.py - This script contains the bacteria3D class which describes the velocity, positional, and physical properties of each bacteria. It has self-functions used to update the position and velocities of the bacteria at each timestep within BacStroke.py. 
 
