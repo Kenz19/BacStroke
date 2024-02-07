@@ -1,5 +1,7 @@
 # BacStroke
-Python code for simulating a dilute (non-interacting) sample of planktonic bacteria swimming within a Clinostat
+Python code for simulating a dilute (non-interacting) sample of planktonic bacteria swimming within a Clinostat.
+
+Everything is in cartesian coordinates and all variables are in SI units. These units are defined for clarity.
 
 Files:
 
