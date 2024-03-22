@@ -8,7 +8,7 @@ Object_initial_conditions/Ecoli.txt
 12000
 
 # rotation rate of clinostat [RPM (rotations per minute)], 0 = no rotation #
-0
+1
 
 # outer radius of clinostat [m], on circular face # 
 5E-2

@@ -7,8 +7,11 @@ the BacStroke Repository.
 
 # modules
 import numpy as np
+import pandas as pd
 import math
 import random
+import os
+import matplotlib.pyplot as plt
 
 ###############################################################################
 
@@ -245,41 +248,246 @@ def peclet(swimming_vel, terminal_vel, centripetal_vel, translational_diffusion_
     return Ps, Pg, Pc
 
 
-def sample_hollow_cylinder(r, R, h):
-    '''
-    This function randomly samples coordinated from a hollow cylindrical system
-    and then converts those coorindates into an xyz coordinate frame.
+# def sample_hollow_cylinder(r, R, h):
+#     '''
+#     This function randomly samples coordinated from a hollow cylindrical system
+#     and then converts those coorindates into an xyz coordinate frame.
 
+#     Parameters
+#     ----------
+#     r : float
+#         Inner radius of cylinder [m].
+#     R : float
+#         Outer radius of cylinder [m].
+#     h : float
+#         length of cylinder [m].
+
+#     Returns
+#     -------
+#     xyz : numpy array, shape 3
+#         xyz coordinates generated from a uniform distribution within a hollow
+#         cylinder.
+
+#     '''
+    
+#     # generate random angle and radius (from central axis) from a uniform 
+#     # distribution - this gets the radius on circular face of the cylinder
+#     theta = random.uniform(0, 2*np.pi)
+#     radii = random.uniform(r, R) # radius is larger than r, smaller than R
+    
+#     # get x and y coords from theta and radii
+#     x = radii*np.cos(theta)
+#     y = radii*np.sin(theta)
+    
+#     # generate z coord from uniform distribution
+#     z = random.uniform(0, h)
+    
+#     # turn coords into a numpy array
+#     xyz = np.array([x, y, z])
+    
+#     return xyz
+
+def sample_from_hollow_cylinder(radius_inner, radius_outer, height):
+    
+    # Define bounding box enclosing the hollow cylinder
+    min_x = -radius_outer
+    max_x = radius_outer
+    min_y = -radius_outer
+    max_y = radius_outer
+    min_z = 0
+    max_z = height
+    
+    while True:
+        # Sample a point uniformly in the bounding box
+        x = np.random.uniform(min_x, max_x)
+        y = np.random.uniform(min_y, max_y)
+        z = np.random.uniform(min_z, max_z)
+        
+        # Compute radial distance from z-axis
+        radial_dist = np.sqrt(x**2 + y**2)
+        
+        # Reject points outside the annular region defined by inner and outer radii
+        if radial_dist >= radius_inner and radial_dist <= radius_outer:
+
+            return np.array([x, y, z])
+        
+
+
+
+def measure_steady_state_time(folder_path, position_file_name):
+    '''
+    Measure the average steady state time of a collection of datasets 
+    corresponding to a single configuration.(in the y direction)
+    
+    This is done by measuring the standard deviaiton (sigma) of the set at the end of 
+    the dataset. Then find where a line of y = <y> + 1sigma passes through the average of the
+    dataset. The time at which this occurs is taken as the steady state time.
+    
     Parameters
     ----------
-    r : float
-        Inner radius of cylinder [m].
-    R : float
-        Outer radius of cylinder [m].
-    h : float
-        length of cylinder [m].
+    
+    folder_path: string
+        path to folder containing subfolders with positional files
+        
+    time_path: string
+        path to time file corresponding to all positions file (one file must work
+                                                               for all positions files)
+        
+    position_file_name
+        name of position file. Must be the same for each run
 
+    
     Returns
     -------
-    xyz : numpy array, shape 3
-        xyz coordinates generated from a uniform distribution within a hollow
-        cylinder.
+    ind: integer
+        index corresponding to steady state time of dataset
 
     '''
     
-    # generate random angle and radius (from central axis) from a uniform 
-    # distribution - this gets the radius on circular face of the cylinder
-    theta = random.uniform(0, 2*np.pi)
-    radii = random.uniform(r, R) # radius is larger than r, smaller than R
+    # get all of the subfolders within folder path
+    runs = os.listdir(folder_path)
+    no_runs = len(runs)
     
-    # get x and y coords from theta and radii
-    x = radii*np.cos(theta)
-    y = radii*np.sin(theta)
+    # find out how many data points are in each file
+    position_path = folder_path + '/' + runs[0] + '/positions.csv'
+    data = pd.read_csv(position_path)
+    positions = np.array(data)
+    no_pos = len(positions)
     
-    # generate z coord from uniform distribution
-    z = random.uniform(0, h)
     
-    # turn coords into a numpy array
-    xyz = np.array([x, y, z])
+    # compile each set of y values into large array
+    y = np.zeros([no_pos, no_runs]) # rows, cols
+    #print(no_pos)
     
-    return xyz
+    # read positions file of each run & add y values to y array
+    for i in range(no_runs):
+        
+        # path to positions file
+        ith_positions_path = folder_path + '/' + runs[i] + '/positions.csv'
+        
+        # open positions file
+        positions_r = pd.read_csv(ith_positions_path) # read csv with pandas
+        positions = np.array(positions_r)
+        
+        # store the y data
+        y[:, i] = positions[:, 1]
+    
+    #print(y)
+    
+    # get mean of each row
+    ymean = np.mean(y, axis = 1)
+    
+    p90 = int((no_pos/100)*95)
+    #print(p90)
+    #print(y[p90:, :])
+    #print(y[p90:, :].shape)
+    
+    # measure mean & standard deviation of last 90% of points (take mean again to get a singular value, but all should be very similar anyway)
+    mean90 = np.mean(np.mean(y[p90:, :], axis = 1))
+    stddev90 = np.mean(np.std(y[p90:, :], axis = 1)) # much more like it value wise
+    print(stddev90)
+    
+    c = mean90 + (np.abs(stddev90))
+    print(c)
+    arr = np.zeros(no_pos) + (c) # straight line
+    
+    # this could be done more accuratley using interpolation of the y data 
+    # to get a function that we could equate the straight line too but this is
+    # as accurate that is needed at the moment
+    
+    # return a boolean array stating if the tolerance line is close to the real 
+    # data
+    mask = np.isclose(arr, ymean, atol = 10E-5)
+    
+    # index of first true
+    ind = np.argmax(mask)
+    
+    # ignore next 3 lines ### 
+    # find first index where y data drops below the 1 sigma threshold (as we
+    # know that the non 0 g follow rough exponential distributions)
+    #crossing_index = np.argmax(ymean <= (c))
+    
+    # read in time data
+    #time = pd.read_csv(time_path)
+    #times = np.array(time)
+    #print(times)
+    #print(len(times), len(arr), len(ymean))
+    
+    # steady state time is the time corresponding to the first true index
+    #steady_state_time = times[ind]
+    
+    #print(ind,times[ind])
+    
+    #plt.scatter(times, arr, s = 2, zorder = 20)
+    #plt.scatter(times, ymean, s = 2)
+    
+    return ind
+    
+    
+#measure_steady_state_time('Studies/Exp1/Exp1_data/Data/g=0.098,vs=0.0', 'Studies/Exp1/Exp1_data/time.csv','positions.csv')
+
+def steady_state_time(y, no_pos, time_path):
+    
+    '''
+    y: numpy array
+        
+    no_pos: integer
+        number of positions recorded per run
+    '''
+    
+    # get mean of each row
+    ymean = np.mean(y, axis = 1)
+    
+    p90 = int((no_pos/100)*95)
+    #print(p90)
+    #print(y[p90:, :])
+    #print(y[p90:, :].shape)
+    
+    # measure mean & standard deviation of last 90% of points (take mean again to get a singular value, but all should be very similar anyway)
+    mean90 = np.mean(np.mean(y[p90:, :], axis = 1))
+    stddev90 = np.mean(np.std(y[p90:, :], axis = 1)) # much more like it value wise
+    print(stddev90)
+    
+    c = mean90 + (2*np.abs(stddev90))
+    print(c)
+    arr = np.zeros(no_pos) + (c) # straight line
+    
+    # this could be done more accuratley using interpolation of the y data 
+    # to get a function that we could equate the straight line too but this is
+    # as accurate that is needed at the moment
+    
+    # return a boolean array stating if the tolerance line is close to the real 
+    # data
+    mask = np.isclose(arr, ymean, atol = 10E-5)
+    
+    # index of first true
+    ind = np.argmax(mask)
+    
+    # ignore next 3 lines ### 
+    # find first index where y data drops below the 1 sigma threshold (as we
+    # know that the non 0 g follow rough exponential distributions)
+    #crossing_index = np.argmax(ymean <= (c))
+    
+    # read in time data
+    #time = pd.read_csv(time_path)
+    #times = np.array(time)
+    #print(times)
+    #print(len(times), len(arr), len(ymean))
+    
+    # steady state time is the time corresponding to the first true index
+    #steady_state_time = times[ind]
+    
+    #print(ind,times[ind])
+    
+    #plt.scatter(times, arr, s = 2, zorder = 20)
+    #plt.scatter(times, ymean, s = 2)
+    
+    return ind
+
+    
+    
+    
+    
+    
+    
+    

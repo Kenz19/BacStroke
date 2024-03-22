@@ -4,8 +4,8 @@ of a single bacterium within a clinostat based on parameters found within the
 configuration file. 
 
 The bacteriums position within the clinostat is updated at each timestep
-within the simulation using a velocity verlet integrator. Its movement is 
-based on velocity contribution from 6 different components:
+within the simulation. Where it moves to depends on its velocity, this depends
+on four components:
     
     Gravity
     Diffusion
@@ -24,38 +24,49 @@ velocity in the initial conditions file to 0 (last element in the line).
 # modules
 import numpy as np
 import matplotlib.pyplot as plt
-
-# reseting style sheet - if an error occurs this may be the cause
-import matplotlib as mpl
-mpl.rcParams.update(mpl.rcParamsDefault)
+from numpy.polynomial.polynomial import polyfit
+from matplotlib.patches import Rectangle
+import sys
+import random
 
 # external files
 import Functions as f 
 
 # class
 from Bacteria3D import Bacteria3D as bac
+
+plt.rcParams.update({
+    'text.usetex': False,
+    'font.family': 'roman',
+})
+
+# #handle graph formatting and style
+plt.style.use('shendrukGroupStyle')
+#mpl.rcParams['image.cmap'] = 'viridis'
+import shendrukGroupFormat as ed
+MYLW=1.0 #line width
   
+random.seed(100)
+
 ###############################################################################
 
 def main(config_file, output_file, tumble_file, time_file, swimming_file, figure_output_file):
-    '''
-    Main BacStroke function. This function runs the main simulation. 
-    '''
     
-    ### 1. READ CONFIGURATION FILE ###
+    # 1. FILE INITIALISING ####################################################
     
     # opening config file containing all file paths needed to execute code
+    #config_file = 'test_config.txt' # path to config file
     file = open(config_file, "r")
     
     # reading every entry from configuration file (containing constants etc)
-    config = file.readlines()[1::3] # this will be in order of items in the config file
+    config = file.readlines()[1::3]
     
-    # removing trailing new line (\n) (general formatting)
+    # removing trailing new line (\n)
     for i in range(len(config)):
         config[i] = config[i].rstrip()
     
-    # get initial conditions file from first line of config
-    inputfile_name = config[0] # input data file (containing becterium initial conditions)
+    # obtaining file names from config file
+    inputfile_name = config[0]# input data file (containing becterium initial conditions)
     
     # Determining length of inputfile = no. bacteria in system   
     with open(inputfile_name, 'r') as fp:
@@ -63,16 +74,15 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
         
     fp.close() # close input file to ensure no mess or overwriting
     
-    # open initial conditions file
-    infile = open(inputfile_name, "r")
+    infile = open(inputfile_name, "r")# opening input file to use
 
     bacteria = [] # will contain instances of Bacteria3D, i.e initial conditions of each bacterium
     
-    # read bacteria instances from inital conditions file
+    # initialising bacteria instances
     for i in range(lines):
         bacteria.append(bac.new_b3d(infile))
         
-    ### 2. DEFINING INITIAL CONDITIONS AND CONSTANTS OF CLINOSTAT SYSTEM ###
+    # DEFINING INITIAL CONDITIONS AND CONSTANTS OF CLINOSTAT SYSTEM ###########
         
     # Time parmeters of simulation
     time = 0.0 # [s]
@@ -80,240 +90,365 @@ def main(config_file, output_file, tumble_file, time_file, swimming_file, figure
     total_time = float(config[2]) # total length of similation [s]
     numstep = round(total_time/dt) # number of steps that simulation will take, rounded to int as used as np sizing
     
-    # rotation parameters 
+    # clinostat parameters 
     clino_rotation_rate = float(config[3]) # rotation rate of clinostat [RPM]
     omega = clino_rotation_rate*2*np.pi/60 # converting rotation rate to angular velocity [rad/s]
     
-    # physical clinostat parameters
+    # clinostat parameters
     R = float(config[4]) # radius of circular face of clinostat [m]
-    r = float(config[5]) # inner radius of clinostat on circular face [m]
-    H = float(config[6]) # length of clinostat down the z axis [m]
-    
+    H = float(config[5]) # length of clinostat down the z axis [m]
+    r = 0.5E-2
     
     # system constants
-    density = float(config[7]) # density of medium in clinostat [kg/m^3]
-    g = float(config[8]) # acceleration due to gravity [m/s^2]
-    rotational_diffusion_coefficient = float(config[9]) # inversely proportional to time it takes bacterium to forget direction its travelling in [1/s]
-    viscosity_coefficient = float(config[10]) # viscosity coefficient of clinostat medium at room temp [Pa/s] (water during testing)
-    diffusion_coefficient = float(config[11]) # diffusion coefficient for medium within clinostat at room temp [m^2/s]
-    tumbling_rate = int(config[12]) # how often in a second a bacterium should tumble
+    density = float(config[6]) # density of medium in clinostat [kg/m^3]
+    g = float(config[7]) # acceleration due to gravity [m/s^2]
+    
+    rotational_diffusion_coefficient = float(config[8]) # inversely proportional to time it takes bacterium to forget direction its travelling in [1/s]
+    viscosity_coefficient = float(config[9]) # viscosity coefficient of clinostat medium at room temp [Pa/s] (water during testing)
+    diffusion_coefficient = float(config[10]) # diffusion coefficient for medium within clinostat at room temp [m^2/s]
+
+    tumbling_rate = int(config[11]) # how often in a second a bacterium should tumble
+    
+    centripetal_force_status = config[12]
+    print(type(centripetal_force_status))
     
     # We now have a list of bacteria created as point particle instances from
     # the bacteria3D class 
     
-    ### 3. GENERATING INITIAL CONDITIONS ###
-
-    # array to store inital positions of each bacteria
+    # 2. GENERATING INITIAL CONDITIONS ########################################
+    
     initial_positions = np.zeros([lines, 3])
     
     # reading inital position of bacteria
     for i in range(len(bacteria)):        
-            # Saving initial positions to previously defined array
+            # Saving initial positions
             initial_positions[i] = bacteria[i].pos
 
     # Storage for data
     pos_array = np.zeros([lines, numstep, 3]) # xyz position of every bacteria every timestep
-    time_array = np.zeros(numstep) # tracking simulation time [s]
-    tumble_array = np.zeros(numstep) # mark when a bacterium tumbles with a 1, 0 if not
-    swim_direction = np.zeros([lines, numstep, 3]) # tracking magnitude of swimming vector (done for external test)
+    time_array = np.zeros(numstep)
+    tumble_array = np.zeros(numstep)
+    swim_direction = np.zeros([lines, numstep, 3])
     
-    # initialising velocity terms (generate the velocity in the first step via Bacteria3D)
+    # initialising velocity terms
     for i in range(lines):
-        bacteria[i].terminal_vel(viscosity_coefficient, density, g) # terminal velocity due to gravity
-        bacteria[i].rotational_vel(omega) # rotational velocity of the clinostat
+        bacteria[i].terminal_vel(viscosity_coefficient, density, g) # terminal velocity
+        #print('vg = ' + str(bacteria[i].terminal_vel))
+        bacteria[i].rotational_vel(omega, dt) # rotational velocity
         
-        # initial planar position on circular face (needed for centripetal force)
+        # initial planar position
         x = initial_positions[i][0]
         y = initial_positions[i][1]
         planar_pos = np.array([x, y, 0])
         
-        bacteria[i].centripetal_force(viscosity_coefficient, density, omega, planar_pos) # centripetal velocity
+        bacteria[i].centripetal_force(viscosity_coefficient, density, omega, planar_pos, dt, centripetal_force_status) # centripetal velocity
+        
+        bacteria[i].update_vel(dt, diffusion_coefficient) # !!! remove if this fix doesnt work
+        
+        
     
-    ### 4. BEGINNING OF TIME INTEGRATION (VELOCITY VERLET) ###
+    # 3. BEGINNING OF TIME INTEGRATION  #######################################
     
-    for i in range(numstep):  # Anything that happens per timestep 
+    for i in range(numstep):  # Anything that happens per each timestep 
         
         # progress tracking for loop
-        #print('Progress: ' + str(i+1) + ' out of ' + str(numstep)) # uncomment out for progress bar
+        #print('Progress: ' + str(i+1) + ' out of ' + str(numstep))
         
         time += dt # establishing current time in simulation
         time_array[i] = time # storing current time in simulation
         
-        for j in range(1): # Anything for each bacterium
+        for j in range(lines): # Anything for each particle
   
             # radius of bacterium
             a = bacteria[j].rad
-  
+            
+            planar_pos = np.array([bacteria[j].pos[0], bacteria[j].pos[1], 0])
+            #print('inner boundry, new planar magnitude is: ' + str(np.linalg.norm(planar_pos)))
+            bacteria[j].centripetal_force(viscosity_coefficient, density, omega, planar_pos, dt, centripetal_force_status)
+            
+            bacteria[j].rotational_vel(omega, dt)
+            
             # updating velocity of each bacterium [m/s]
             bacteria[j].update_vel(dt, diffusion_coefficient)
             
-            ### 5. BOUNDRY CONDITIONS ###
-
-            # apply xy boundry conditions if applicable
+            # # Update position of each bacterium, using updated velocity
+            bacteria[j].update_pos(dt)
+            
+            #
+            #bacteria[j].rotational_vel(omega)
+  
+            # updating velocity of each bacterium [m/s]
+            #bacteria[j].update_vel(dt, diffusion_coefficient)
+            
+            # # Update position of each bacterium, using updated velocity
+            #bacteria[j].update_pos(dt)
+            
+            # Update position of each bacterium, using updated velocity
+            #bacteria[j].update_pos(dt) 
+            #pos_array[j, i] = bacteria[j].pos # store each position
+            
+            # boundary conditions (x & y)
             
             #position on a 2D circle (set z = 0)
             planar_position = bacteria[j].pos - [0, 0, bacteria[j].pos[2]]
             planar_magnitude = np.linalg.norm(planar_position)
+            #print(planar_magnitude)
             
             # zone where boundry conditions are applied
             outer_bc_zone = R - a # outer radius minus bacterium radii
             inner_bc_zone = r + a # inner radius plus bacterium radii
+            
+            boundry_conditions = True
+            
+            if boundry_conditions == True:
                 
-            # if bacterium position, r, within 1 bacterial radii from the edge, apply boundry conditions
-            if planar_magnitude >= outer_bc_zone:
-                
-                # last updated velocity of bacterium
-                current_vel = bacteria[j].vel
-
-                # radial magnitude and direction of the velocity
-                planar_rad_mag, planar_rad_dir = f.radial_velocity(planar_position, bacteria[j].vel)
-                
-                # removing radial component of velocity, i.e setting velocity to its tangential component
-                bacteria[j].vel = current_vel - (planar_rad_mag*planar_rad_dir)
-                             
-                # saving swimming direction for output later
-                swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
-                
-                # radial direction of position
-                rad_dir = np.copy(bacteria[j].pos)
-                rad_dir[2] = 0
-                rad_dir /= np.linalg.norm(rad_dir)
-                
-                # moving bacterium to outside of boundry condition zone (but remain inside clinostat)
-                frac = 0.1  #Fraction of body size to set inside outer_bc_zone (make parameter later)
-                pos_z = bacteria[j].pos[2] # storing z coord of bacterium
-                bacteria[j].pos = (R - (1.0 + frac)*a)*rad_dir # setting position to some fraction outside the boundry zone but inside the clinostat, this only sets xy parameters
-                bacteria[j].pos[2] = pos_z # setting z parameter back to original
-                pos_array[j, i] = bacteria[j].pos # storing new position
-                
-                # saving variables for output
-                
-                # getting the swimming direciton vector for saving to output.
-                tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
-                tumble_array[i] = tumble
-                               
-                # # apply end boundry conditions if applicable, along side wall conditions
-                
-                # just before one wall
-                if bacteria[j].pos[2] >= (H - a): 
+                # if bacterium position, r, within 1 bacterial radii from the edge, apply boundry conditions
+                if planar_magnitude >= outer_bc_zone:
+                    #print('outer boundry, current planar magnitude is :' +str(planar_magnitude))
                     
-                    # updating z position and re-recording the position
-                    bacteria[j].pos[2] = H - (2*a)
-                    pos_array[j, i] = bacteria[j].pos
+                    # last updated velocity of bacterium
+                    current_vel = bacteria[j].vel # maybe need to use np.copy?
+    
+                    # radial magnitude and direction of the velocity
+                    planar_rad_mag, planar_rad_dir = f.radial_velocity(planar_position, bacteria[j].vel)
+                    
+                    # removing radial component of velocity, i.e setting velocity to its tangential component
+                    bacteria[j].vel = current_vel - (planar_rad_mag*planar_rad_dir)
+                                 
+                    # saving swimming direction for output later
+                    swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
+                    
+                    # radial direction of position
+                    rad_dir = np.copy(bacteria[j].pos)
+                    rad_dir[2] = 0
+                    rad_dir /= np.linalg.norm(rad_dir)
+                    
+                    # moving bacterium to outside of boundry condition zone
+                    frac = 0.1   #Fraction of body size to set inside outer_bc_zone (make parameter later)
+                    pos_z = bacteria[j].pos[2] # storing z coord of bacterium
+                    bacteria[j].pos = (R - (1.0 + frac)*a)*rad_dir # setting position to some fraction outside the boundry zone but inside the clinostat, this only sets xy parameters
+                    bacteria[j].pos[2] = pos_z # setting z parameter back to original
+                    #pos_array[j, i] = bacteria[j].pos # storing new position
+                    #print(pos_array[j, i])
+                    
+                    #xs, ys = bacteria[j].pos[0], bacteria[j].pos[1]
+                    
+                    #print(np.linalg.norm([xs, ys]))
+                    
+                    # saving variables for output
+                    
+                    # getting the swimming direciton vector for saving to output.
+                    tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
+                    tumble_array[i] = tumble
+                    bacteria[j].update_swimming_vel(omega, rotational_diffusion_coefficient, dt, tumble) # updating swimming velocity
+                    swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
+                    
+                    planar_pos = np.array([bacteria[j].pos[0], bacteria[j].pos[1], 0])
+                    #print('outer boundry, new planar magnitude is: ' + str(np.linalg.norm(planar_pos)))
+                    
+                    #bacteria[j].centripetal_force(viscosity_coefficient, density, omega, planar_pos, dt)
+                                   
+                    # # apply end boundry conditions if applicable, along side wall conditions
+                    
+                    # just before one wall
+                    if bacteria[j].pos[2] >= (H - a): 
+                        
+                        # updating z position and re-recording the position
+                        bacteria[j].pos[2] = H - (2*a)
+                        #pos_array[j, i] = bacteria[j].pos
+                        bacteria[j].vel[2] *= 0
+                    
+                    # close to the other wall
+                    if bacteria[j].pos[2] <= (0 + a):
+                        
+                        # updating z position and re-recording the position
+                        bacteria[j].pos[2] = 0 + (2*a)
+                        #pos_array[j, i] = bacteria[j].pos
+                        bacteria[j].vel[2] *= 0
                 
-                # close to the other wall
-                if bacteria[j].pos[2] <= (0 + a):
+                # apply inner wall boundry conditions, if applicable
+                elif planar_magnitude <= inner_bc_zone:
+                    #print('inner boundry')
+                    
+                    #print(planar_magnitude, inner_bc_zone)
+                    
+                    # last updated velocity of bacterium
+                    current_vel = bacteria[j].vel
+    
+                    # radial magnitude and direction of the velocity
+                    planar_rad_mag, planar_rad_dir = f.radial_velocity(planar_position, bacteria[j].vel)
+                    
+                    # removing radial component of velocity, i.e setting velocity to its tangential component
+                    bacteria[j].vel = current_vel - (planar_rad_mag*planar_rad_dir)
+                    
+                    # saving swimming direction for output later
+                    swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
+                    
+                    # radial direction of position
+                    rad_dir = np.copy(bacteria[j].pos)
+                    rad_dir[2] = 0
+                    rad_dir /= np.linalg.norm(rad_dir) # planar radial unit vector of current position
+                    
+                    # moving bacterium to outside of boundry condition zone
+                    frac = 0.1   #Fraction of body size to set inside inner_bc_zone (make parameter later)
+                    pos_z = bacteria[j].pos[2] # storing z coord of bacterium
+                    bacteria[j].pos = (r + (1.0 + frac)*a)*rad_dir # setting position to some fraction outside the boundry zone but inside the clinostat, this only sets xy parameters
+                    bacteria[j].pos[2] = pos_z # setting z parameter back to original
+                    #pos_array[j, i] = bacteria[j].pos # storing new position
+                    
+                    # # saving variables for output
+                    
+                    # getting the swimming direciton vector for saving to output.
+                    tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
+                    tumble_array[i] = tumble
+                    bacteria[j].update_swimming_vel(omega, rotational_diffusion_coefficient, dt, tumble) # updating swimming velocity
+                    swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
+                    
+                    
+                    #planar_pos = np.array([bacteria[j].pos[0], bacteria[j].pos[1], 0])
+                    #print('inner boundry, new planar magnitude is: ' + str(np.linalg.norm(planar_pos)))
+                    #bacteria[j].centripetal_force(viscosity_coefficient, density, omega, planar_pos, dt)
+                    
+                    # apply end boundry conditions if applicable, along side wall conditions
+                    
+                    # just before one wall
+                    if bacteria[j].pos[2] >= (H - a): 
+                        
+                        # updating z position and re-recording the position
+                        bacteria[j].pos[2] = H - (2*a)
+                        #pos_array[j, i] = bacteria[j].pos
+                        
+                        bacteria[j].vel[2] *= 0 #set z velocity to 0
+                    
+                    # close to the other wall
+                    if bacteria[j].pos[2] <= (0 + a):
+                        
+                        # updating z position and re-recording the position
+                        bacteria[j].pos[2] = 0 + (2*a)
+                        #pos_array[j, i] = bacteria[j].pos
+                        
+                        # setting z velocity to be 0, therefore velocity only in xy plane
+                        bacteria[j].vel[2] *= 0
+                
+                # upper z boundry condition
+                elif bacteria[j].pos[2] >= (H - a): 
+                    
+                   # updating z position and re-recording the position
+                   bacteria[j].pos[2] = H - (2*a)
+                   #pos_array[j, i] = bacteria[j].pos
+                   
+                   bacteria[j].vel[2] *= 0
+                 
+                # lower z boundry condition   
+                elif bacteria[j].pos[2] <= (0 + a):
                     
                     # updating z position and re-recording the position
                     bacteria[j].pos[2] = 0 + (2*a)
-                    pos_array[j, i] = bacteria[j].pos
+                    #pos_array[j, i] = bacteria[j].pos
+                    
+                    bacteria[j].vel[2] *= 0
+                    
+                # dont apply wall boundry conditions
+                else:
+                    #print('no boundry, current planar magnitude is ' + str(planar_magnitude))
+                    
+                    # updating velocity of each bacterium [m/s]
+                    #bacteria[j].update_vel(dt, diffusion_coefficient) - this makes the bacterium spiral outwards
+                    
+                    # # Update position of each bacterium, using updated velocity
+                    #bacteria[j].update_pos(dt) 
+                    #pos_array[j, i] = bacteria[j].pos # store each position
+                    
+                    # updating rotational velocity as it depends on position
+                    #bacteria[j].rotational_vel(omega)
+                    
+                    # get planar positions
+                    x = bacteria[j].pos[0]
+                    y = bacteria[j].pos[1]
+                    
+                    planar_pos = np.array([x, y, 0])
+                    
+                    #bacteria[j].centripetal_force(viscosity_coefficient, density, omega, planar_pos, dt)
+                    
+                    # updating the swimming velocity and saving variables
+                    tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
+                    tumble_array[i] = tumble
+                    
+                    bacteria[j].update_swimming_vel(omega, rotational_diffusion_coefficient, dt, tumble) # updating swimming velocity
+                    swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
+           
             
-            # apply inner wall boundry conditions, if applicable
-            elif planar_magnitude <= inner_bc_zone:
-                
-                #print(planar_magnitude, inner_bc_zone)
-                
-                # last updated velocity of bacterium
-                current_vel = bacteria[j].vel
-
-                # radial magnitude and direction of the velocity
-                planar_rad_mag, planar_rad_dir = f.radial_velocity(planar_position, bacteria[j].vel)
-                
-                # removing radial component of velocity, i.e setting velocity to its tangential component
-                bacteria[j].vel = current_vel - (planar_rad_mag*planar_rad_dir)
-                
-                # saving swimming direction for output later
-                swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
-                
-                # radial direction of position
-                rad_dir = np.copy(bacteria[j].pos)
-                rad_dir[2] = 0
-                rad_dir /= np.linalg.norm(rad_dir) # planar radial unit vector of current position
-                
-                # moving bacterium to outside of boundry condition zone
-                frac = 0.1   #Fraction of body size to set inside inner_bc_zone (make parameter later)
-                pos_z = bacteria[j].pos[2] # storing z coord of bacterium
-                bacteria[j].pos = (r + (1.0 + frac)*a)*rad_dir # setting position to some fraction outside the boundry zone but inside the clinostat, this only sets xy parameters
-                bacteria[j].pos[2] = pos_z # setting z parameter back to original
-                pos_array[j, i] = bacteria[j].pos # storing new position
-                
-                # # saving variables for output
-                
-                # getting the swimming direciton vector for saving to output.
-                tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
-                tumble_array[i] = tumble
-                
-                # apply end boundry conditions if applicable, along side wall conditions
-                
-                # just before one wall
-                if bacteria[j].pos[2] >= (H - a): 
-                    
-                    # updating z position and re-recording the position
-                    bacteria[j].pos[2] = H - (2*a)
-                    pos_array[j, i] = bacteria[j].pos
-                    
-                    #bacteria[j].vel[2] = 0
-                
-                # close to the other wall
-                if bacteria[j].pos[2] <= (0 + a):
-                    
-                    # updating z position and re-recording the position
-                    bacteria[j].pos[2] = 0 + (2*a)
-                    pos_array[j, i] = bacteria[j].pos
-                    
-                    # setting z velocity to be 0, therefore velocity only in xy plane
-                    #bacteria[j].vel[2] = 0
-            
-            # upper z boundry condition
-            elif bacteria[j].pos[2] >= (H - a): 
-                
-               # updating z position and re-recording the position
-               bacteria[j].pos[2] = H - (2*a)
-               pos_array[j, i] = bacteria[j].pos
-               
-               bacteria[j].vel[2] = 0
-             
-            # lower z boundry condition   
-            elif bacteria[j].pos[2] <= (0 + a):
-                
-                # updating z position and re-recording the position
-                bacteria[j].pos[2] = 0 + (2*a)
-                pos_array[j, i] = bacteria[j].pos
-                
-                bacteria[j].vel[2] = 0
-
-            ### end of boundry conditions
-                
-            # dont apply wall boundry conditions
-            else:
-                
-                # updating velocity of each bacterium [m/s]
-                #bacteria[j].update_vel(dt, diffusion_coefficient) - this makes the bacterium spiral outwards
-                
-                # Update position of each bacterium, using updated velocity
-                bacteria[j].update_pos(dt) 
-                pos_array[j, i] = bacteria[j].pos # store each position
-                
-                # updating rotational velocity as it depends on position
-                bacteria[j].rotational_vel(omega)
-                
-                # updating the swimming velocity and saving variables
-                tumble = bac.tumble_probability(dt, tumbling_rate) # does bacterium tumble? 1 = yes, 0 = no
-                tumble_array[i] = tumble
-                
-                bacteria[j].update_swimming_vel(omega, rotational_diffusion_coefficient, dt, tumble) # updating swimming velocity
-                swim_direction[j, i] = bacteria[j].swim_direction # saving swimming direction
-
-    ### 6. SAVING OUTPUT ###            
-
+           
+            #bacteria[j].rotational_vel(omega)
+           
+            # record position after all relevant conditions applied
+            pos_array[j, i] = bacteria[j].pos
+            #print(pos_array[j, i])
+          
+           # if statement for inner boundry conditions, including the same thing about the z conditions 
+    
+    #pos_array[0] = pos_array[0][::100]
     # saving parameters to output file
     np.savetxt(output_file, pos_array[0], delimiter=",")
-    np.savetxt(tumble_file, tumble_array, delimiter=",")
+    #np.savetxt(tumble_file, tumble_array, delimiter=",")
     np.savetxt(time_file, time_array, delimiter=",") # outputting time for ease of analysis
     #np.savetxt(swimming_file, swim_direction[0], delimiter = ",")
+    # 4. PLOTTING ################################################################
+            
+    # # plotting path of bacteria
+    # nopoints = 50
+    
+    # x_coords = pos_array[0,:,0]
+    # y_coords = pos_array[0,:,1]
+    # #print(y_coords)
+    # z_coords = pos_array[0,:,2]
+    
+    # # fig = plt.figure(figsize=(12, 12))
+    # # ax = fig.add_subplot(projection='3d')
+    
+    # # ax.scatter(x_coords[::nopoints], y_coords[::nopoints], z_coords[::nopoints])
+    # # plt.show()
+    
+    # fig,ax = plt.subplots(1,3, figsize = (35,12))
+    # ax[0].scatter(x_coords[::nopoints], z_coords[::nopoints], s=10, label = 'Bacteria 1')
+    # ax[0].set_xlabel('x')#, fontsize = 30)
+    # ax[0].set_ylabel('z')#, fontsize = 30)
+    # ax[0].tick_params(axis='x')#, labelsize = 20)
+    # ax[0].tick_params(axis='y')#, labelsize=20)
+    # #ax[0].legend()
+    
+    # # view of circular face of clinostat
+    # cir = plt.Circle((0, 0), R, facecolor='#c7c7c7', alpha=1, linewidth=3, linestyle='--', edgecolor='black')#color='darkorange',fill=False)
+    # ax[1].add_patch(cir)
+    # cir2 = plt.Circle((0, 0), r, facecolor='white', alpha=1, linewidth=3, linestyle='--', edgecolor='black')#color='darkorange',fill=False)
+    # ax[1].add_patch(cir2)
+    # ax[1].plot(x_coords[::nopoints], y_coords[::nopoints], 'o',  zorder = 1, label = 'Bacteria 1')
+    # ax[1].set_xlabel('x')#, fontsize = 30)
+    # ax[1].set_ylabel('y')#, fontsize = 30)
+    # ax[1].tick_params(axis='x')#, labelsize=20)
+    # ax[1].tick_params(axis='y')#, labelsize=20)
 
-  
- 
+    # # plotting y position against time
+    # # ax[2].scatter(time_array[::10]/1e2, x_coords[::10], s = 5, label = 'Bacteria 1')
+    # ax[2].plot(time_array[::nopoints]/1e2, y_coords[::nopoints], 'o', label = 'Bacteria 1')
+    # ax[2].set_xlabel('t ($10^2$s)')#, fontsize = 30)
+    # ax[2].set_ylabel('y')#, fontsize = 30)
+    # ax[2].tick_params(axis='x')#, labelsize=20)
+    # ax[2].tick_params(axis='y')#, labelsize=20)
+    
+    # fig.suptitle('Sim length = ' + str(total_time) + 's' + ', $\Delta$t = ' + str(dt) + 's' + ', RPM = ' + str(clino_rotation_rate), fontsize=30)
+    # #plt.savefig(figure_output_file, dpi = 300)
+    # plt.show()
+    
+    # # PUT DPI 
+    
 # Execute main method, but only when directly invoked
 if __name__ == "__main__":
-    main('config.txt', 'bacpos.csv', 'tumbles.csv', 'time.csv', 'swimming_direction.csv', 'trajectory.png')
+    
+    config = 'Swimming'
+    
+    output_file = f"D:\MPhys\ExpData\AdditionalData\Varying_configurations\Data\{config}\positions.csv"
+    time_file = f"D:/MPhys/ExpData/AdditionalData/Varying_configurations/Data/{config}/time.csv"
+    figure_output = f"D:\MPhys\ExpData\AdditionalData\Varying_configurations\Data\{config}\trajectory.png"
+    
+    main('test_config.txt', output_file, 'tumbles.csv', time_file, 'swimming_direction.csv', figure_output)

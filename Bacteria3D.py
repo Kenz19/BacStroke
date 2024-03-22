@@ -37,9 +37,12 @@ class Bacteria3D(object):
         
         # initialising direction of swimming
         self.swim = float(swimming_vel) # swimming speed in m/s, float
-        self.swim_direction = f.initialise_swimming_direction() # random initial unit direction for swimming velocity, 3D array of mag 1
+        #self.swim_direction = f.initialise_swimming_direction() # random initial unit direction for swimming velocity, 3D array of mag 1
+        self.swim_direction = np.array([0, 1, 0])
+        #print(self.swim_direction)
         #self.swim_direction = np.array([1, 2, 3])
         self.swim_vel = self.swim*self.swim_direction # swimming velocity in m/s, 3D array [vx, vy, vz]
+        #print()
         
     
     def __str__(self):
@@ -52,49 +55,52 @@ class Bacteria3D(object):
         return xyz_string
     
     
-# # storing old terminal velocity just in case needed
-#     def terminal_vel(self, viscosity_coeff, density, g):
-#         '''
-#         Calculates velocity at t = 0 for each bacteria instance.
-        
-#         :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
-#         :param density: float, density in kg/m^3 for the same liquid
-#         :param g: float, gavitational constant in kg/m^2 for desired environment
-#         :param a: float, bacterial size in m
-#         '''   
-#         # assuming to be at terminal velocity once in system (can add factor from 23/9/23 notes in not assuming this)
-#         # currently only using Vt and Vd but Vs and Vr will be implemented
-        
-#         # as only VT acting then [x] and [z] vel will be 0
-        
-#         VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
-        
-#         self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
-        
-    
-    def terminal_vel(self, viscosity_coeff, fluid_density, g):
+# storing old terminal velocity just in case needed
+    def terminal_vel(self, viscosity_coeff, density, g):
         '''
         Calculates velocity at t = 0 for each bacteria instance.
         
         :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
-        :param fluid_density: float, density in kg/m^3 for the same liquid
-        :param object_density: float, density of object in clinostat, kg/m^3
+        :param density: float, density in kg/m^3 for the same liquid
         :param g: float, gavitational constant in kg/m^2 for desired environment
+        :param a: float, bacterial size in m
         '''   
+        # assuming to be at terminal velocity once in system (can add factor from 23/9/23 notes in not assuming this)
+        # currently only using Vt and Vd but Vs and Vr will be implemented
         
-        # density of object when assumed to be a sphere        
-        object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
+        # as only VT acting then [x] and [z] vel will be 0
         
-        # bouyant mass of object
-        bm = self.mass*(1-(fluid_density/object_density))
-
-        # gravity acts in y direction therefore terminal velocity in y direction        
-        VTy = (bm*g)/(6*np.pi*viscosity_coeff*self.rad) 
+        VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
         
         self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
         
+    
+    # def terminal_vel(self, viscosity_coeff, fluid_density, g):
+    #     '''
+    #     Calculates velocity at t = 0 for each bacteria instance.
         
-    def centripetal_force(self, viscosity_coeff, fluid_density, omega, planar_position):
+    #     :param viscosity_coeff: float, viscosity coefficient in PaS for liquid in sim.
+    #     :param fluid_density: float, density in kg/m^3 for the same liquid
+    #     :param object_density: float, density of object in clinostat, kg/m^3
+    #     :param g: float, gavitational constant in kg/m^2 for desired environment
+    #     '''   
+        
+    #     # density of object when assumed to be a sphere        
+    #     object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
+    #     #print('vg object dens = ' + str(object_density))
+        
+    #     # bouyant mass of object
+    #     bm = self.mass*(1-(fluid_density/object_density))
+
+    #     # gravity acts in y direction therefore terminal velocity in y direction        
+    #     VTy = (bm*g)/(6*np.pi*viscosity_coeff*self.rad) 
+        
+    #     self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
+        
+    #     #print('vg = ' + str(np.linalg.norm(self.term_vel)))
+        
+        
+    def centripetal_force(self, viscosity_coeff, fluid_density, omega, planar_position, dt, status):
         '''
         Calculates velocity due to centripetal force to offset the drag force.
         
@@ -102,19 +108,32 @@ class Bacteria3D(object):
         :param fluid_density: float, density in kg/m^3 for the same liquid
         :param omega: float, density of object in clinostat, kg/m^3
         :param planar_position: numpy array [3], xyz position of bacterium with z set to 0.
+        :param status: String, True means centripetal force is on, False means its off
         '''   
         
-        # density of object when assumed to be a sphere        
-        object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
+        # centripetal force is on
+        if status == 'True':
         
-        # bouyant mass of object
-        bm = self.mass*(1-(fluid_density/object_density))
-
-        # centripetal force being offset by drag force
-        self.centripetal_vel = (bm*(omega**2)*planar_position)/(6*np.pi*viscosity_coeff*self.rad)
+            # density of object when assumed to be a sphere        
+            object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
+            #print('vc object dens = ' + str(object_density))
+            
+            # bouyant mass of object
+            bm = self.mass*(1-(fluid_density/object_density))
+            #print('vc bm = ' + str(bm))
+    
+            # centripetal force being offset by drag force
+            self.centripetal_vel = (bm*(omega**2)*planar_position)/(6*np.pi*viscosity_coeff*self.rad)
+         
+        # centripetal force is off
+        elif status == 'False':
+            
+            self.centripetal_vel = [0, 0, 0]
+            #print(self.centripetal_vel)
+            #print('vc = ' + str(np.linalg.norm(self.centripetal_vel)))
         
         
-    def rotational_vel(self, omega):
+    def rotational_vel(self, omega, dt):
         '''
         This function calculates the rotational velocity of the bacteria
         at its current position.
@@ -125,6 +144,24 @@ class Bacteria3D(object):
         y = self.pos[1] # current y position of bacteria
         
         self.rot_vel = np.array([-y*omega, x*omega, 0]) # updating the current rotational velocity of the bacteria 
+        
+        
+        
+        #print(np.linalg.norm(self.rot_vel))
+        
+    # def rotational_vel(self, omega, dt):
+        
+    #     x = self.pos[0]
+    #     y = self.pos[1]
+        
+    #     r = np.sqrt((x**2) + (y**2))
+        
+    #     theta = omega*dt
+        
+    #     x_new = r*np.cos(theta)
+    #     y_new = r*np.sin(theta)
+        
+    #     self.rot_vel = np.array([x_new, y_new, 0])/dt
     
     
     @staticmethod
@@ -138,12 +175,15 @@ class Bacteria3D(object):
         :param dt: float, timestep of simulation in s
         :param tumbling_rate: integer, number of tumbles per second in bacteriums motion
         '''
+    
         # counting number of decimal places in timestep float
+        #dps = str(0.00001)[::-1].find('.')
         dps = str(dt)[::-1].find('.')
+        #print(dps)
         
         # generating random number between 0 & 1 with same timestep as dt        
-        random_number = round(np.random.uniform(0, 1), dps)
-        
+        random_number = round(np.random.uniform(0, 1-dt), dps) # 1-dps ensures that when tumbling_rate is 0, you dont get any tumbles at all
+        #print(random_number)
         #tumbling_rate = 1 # tumble per second
         
         # threshold that allows bacterium to tumble
@@ -152,12 +192,14 @@ class Bacteria3D(object):
         # if randomly generated number greater than or equal to theshold
         # bacterium tumbles
         if random_number >= tumble_prob:
-            #print('Tumbled')
+            print('Tumbling........................')
             does_bacterium_tumble = 1
+            #print(random_number)
+            #print(tumble_prob)
         
             
         else: # bacterium doesnt tumble
-            #print('No Tumbles')
+            print('No Tumbles')
             does_bacterium_tumble = 0  
         
         return does_bacterium_tumble # 1 = does tumble, 0 = does not tumble
@@ -173,7 +215,7 @@ class Bacteria3D(object):
         '''
         # If tumble_probabilty is true then the bacterium tumbles in a random direction
         if does_bacterium_tumble == 1:
-            #print('tumbling.....................................')
+            print('tumbling.....................................')
             
             # random new tumbling direction
             new_direction = f.initialise_swimming_direction()           
@@ -185,10 +227,12 @@ class Bacteria3D(object):
        
         # if tumble probability is false it swims in its new direction
         else:
-            #print('swimming')
+            print('swimming')
             # xyz components of current swimming direction unit vector
             ex = self.swim_direction[0]
             ey = self.swim_direction[1]
+            
+            #print(self.swim_direction)
             #ez = self.swim_direction[2]
         
             # DEFINING RATE OF CHANGE OF SWIMMING UNIT VECTOR #####
@@ -213,7 +257,10 @@ class Bacteria3D(object):
             magnitude = np.linalg.norm(new_direction)
         
             # updating the swimming direction and then the swimming velocity with that vecot
-            self.swim_direction = new_direction/magnitude # normalising for unit vector  
+            self.swim_direction = new_direction/magnitude # normalising for unit vector
+            #print(self.swim_direction)
+            self.swim_vel = self.swim*self.swim_direction
+            #print(np.linalg.norm(self.swim))
         
 
 
@@ -237,6 +284,11 @@ class Bacteria3D(object):
         diffusion = noise*np.sqrt(2*diffusion_coefficient/dt)
         
         self.vel = self.term_vel + diffusion + self.rot_vel + self.swim*self.swim_direction + self.centripetal_vel
+        #print(self.vel, self.term_vel, diffusion, self.rot_vel, self.swim*self.swim_direction, self.centripetal_vel)
+        
+        #print(np.linalg.norm(0.5*self.mass*(self.vel**2)))
+        
+        #print((self.mass*np.abs(self.pos[1])*9.8) + np.linalg.norm(0.5*self.mass*(self.vel**2)))
  
         
     def update_pos(self, dt):
