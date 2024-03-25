@@ -11,7 +11,7 @@ import numpy as np
 # external files
 import Functions as f
 
-#np.random.seed(1912)
+#np.random.seed(66)
 
 ###############################################################################
 
@@ -70,7 +70,11 @@ class Bacteria3D(object):
         
         # as only VT acting then [x] and [z] vel will be 0
         
-        VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
+        bm = (4/3)*np.pi*density*(self.rad**3)*((1050/density) - 1)
+        
+        VTy = bm*g/(6*np.pi*viscosity_coeff*self.rad)
+        
+        #VTy = (0.05*g*density*self.rad**2)/(6*np.pi*viscosity_coeff) # y component of terminal velocity  
         
         self.term_vel = np.array([0, -VTy, 0]) # negative comes from coordinate definition
         
@@ -115,12 +119,16 @@ class Bacteria3D(object):
         if status == 'True':
         
             # density of object when assumed to be a sphere        
-            object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
+            #object_density = self.mass/(np.pi*(4/3)*self.rad**3) 
             #print('vc object dens = ' + str(object_density))
             
             # bouyant mass of object
-            bm = self.mass*(1-(fluid_density/object_density))
+            #bm = self.mass*(1-(fluid_density/object_density))
             #print('vc bm = ' + str(bm))
+    
+            #bm = 0.05*fluid_density*self.rad**3
+            
+            bm = (4/3)*np.pi*fluid_density*(self.rad**3)*((1050/fluid_density) - 1)
     
             # centripetal force being offset by drag force
             self.centripetal_vel = (bm*(omega**2)*planar_position)/(6*np.pi*viscosity_coeff*self.rad)
@@ -192,14 +200,14 @@ class Bacteria3D(object):
         # if randomly generated number greater than or equal to theshold
         # bacterium tumbles
         if random_number >= tumble_prob:
-            print('Tumbling........................')
+            #print('Tumbling........................')
             does_bacterium_tumble = 1
             #print(random_number)
             #print(tumble_prob)
         
             
         else: # bacterium doesnt tumble
-            print('No Tumbles')
+            #print('No Tumbles')
             does_bacterium_tumble = 0  
         
         return does_bacterium_tumble # 1 = does tumble, 0 = does not tumble
@@ -215,7 +223,7 @@ class Bacteria3D(object):
         '''
         # If tumble_probabilty is true then the bacterium tumbles in a random direction
         if does_bacterium_tumble == 1:
-            print('tumbling.....................................')
+            #print('tumbling.....................................')
             
             # random new tumbling direction
             new_direction = f.initialise_swimming_direction()           
@@ -227,7 +235,7 @@ class Bacteria3D(object):
        
         # if tumble probability is false it swims in its new direction
         else:
-            print('swimming')
+            #print('swimming')
             # xyz components of current swimming direction unit vector
             ex = self.swim_direction[0]
             ey = self.swim_direction[1]
@@ -279,6 +287,7 @@ class Bacteria3D(object):
   
         # generating a noise vector from a normal distribution
         noise = np.random.normal(0, 1, size=3)
+        #print(np.linalg.norm(noise))
         
         # diffusion
         diffusion = noise*np.sqrt(2*diffusion_coefficient/dt)
